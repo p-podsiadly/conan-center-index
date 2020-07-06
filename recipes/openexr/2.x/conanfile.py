@@ -14,7 +14,7 @@ class OpenEXRConan(ConanFile):
     options = {"shared": [True, False], "fPIC": [True, False]}
     default_options = {"shared": False, "fPIC": True}
     generators = "cmake", "cmake_find_package"
-    exports_sources = "CMakeLists.txt"
+    exports_sources = ["CMakeLists.txt", "patches/**"]
 
     _cmake = None
 
@@ -40,46 +40,33 @@ class OpenEXRConan(ConanFile):
     def _configure_cmake(self):
         if self._cmake:
             return self._cmake
+
         self._cmake = CMake(self)
         self._cmake.definitions["PYILMBASE_ENABLE"] = False
         self._cmake.definitions["OPENEXR_VIEWERS_ENABLE"] = False
         self._cmake.definitions["OPENEXR_BUILD_BOTH_STATIC_SHARED"] = False
         self._cmake.definitions["OPENEXR_BUILD_UTILS"] = False
         self._cmake.definitions["BUILD_TESTING"] = False
+
         self._cmake.configure(build_folder=self._build_subfolder)
         return self._cmake
 
-    def _patch_files(self):
-
-        pkg_version = tools.Version(self.version)
-        if pkg_version < "2.5.2" and self.settings.os == "Windows":
-            # This fixes symlink creation on Windows.
-            # OpenEXR's build system no longer creates symlinks on windows, starting with commit
-            # 7f9e1b410de92de244329b614cf551b30bc30421 (included in 2.5.2).
-            for lib in ("OpenEXR", "IlmBase"):
-                tools.replace_in_file(os.path.join(self._source_subfolder,  lib, "config", "LibraryDefine.cmake"),
-                                      "${CMAKE_COMMAND} -E chdir ${CMAKE_INSTALL_FULL_LIBDIR}",
-                                      "${CMAKE_COMMAND} -E chdir ${CMAKE_INSTALL_FULL_BINDIR}")
-
-        # Add  "_d" suffix to lib file names.
-        for lib in ("OpenEXR", "IlmBase"):
-            if self.settings.build_type == "Debug":
-                tools.replace_in_file(os.path.join(self._source_subfolder,  lib, "config", "LibraryDefine.cmake"),
-                                      "set(verlibname ${CMAKE_SHARED_LIBRARY_PREFIX}${libname}${@LIB@_LIB_SUFFIX}${CMAKE_SHARED_LIBRARY_SUFFIX})".replace("@LIB@", lib.upper()),
-                                      "set(verlibname ${CMAKE_SHARED_LIBRARY_PREFIX}${libname}${@LIB@_LIB_SUFFIX}_d${CMAKE_SHARED_LIBRARY_SUFFIX})".replace("@LIB@", lib.upper()))
-                tools.replace_in_file(os.path.join(self._source_subfolder,  lib, "config", "LibraryDefine.cmake"),
-                                      "set(baselibname ${CMAKE_SHARED_LIBRARY_PREFIX}${libname}${CMAKE_SHARED_LIBRARY_SUFFIX})",
-                                      "set(baselibname ${CMAKE_SHARED_LIBRARY_PREFIX}${libname}_d${CMAKE_SHARED_LIBRARY_SUFFIX})")
+    def _patch_sources(self):
+        for patch in self.conan_data.get("patches", {}).get(self.version, []):
+            tools.patch(**patch)
 
     def build(self):
-        self._patch_files()
+        self._patch_sources()
+
         cmake = self._configure_cmake()
         cmake.build()
 
     def package(self):
         self.copy("LICENSE.md", src=self._source_subfolder, dst="licenses")
+
         cmake = self._configure_cmake()
         cmake.install()
+
         tools.rmdir(os.path.join(self.package_folder, "share"))
         tools.rmdir(os.path.join(self.package_folder, "lib", "pkgconfig"))
         tools.rmdir(os.path.join(self.package_folder, "lib", "cmake"))
@@ -88,20 +75,11 @@ class OpenEXRConan(ConanFile):
         self.cpp_info.names["cmake_find_package"] = "OpenEXR"
         self.cpp_info.names["cmake_find_package_multi"] = "OpenEXR"
         self.cpp_info.names["pkg_config"] = "OpenEXR"
-        parsed_version = self.version.split(".")
-        lib_suffix = "-{}_{}".format(parsed_version[0], parsed_version[1])
-        if self.settings.build_type == "Debug":
-            lib_suffix += "_d"
 
-        self.cpp_info.libs = ["IlmImf{}".format(lib_suffix),
-                              "IlmImfUtil{}".format(lib_suffix),
-                              "IlmThread{}".format(lib_suffix),
-                              "Iex{}".format(lib_suffix),
-                              "IexMath{}".format(lib_suffix),
-                              "Imath{}".format(lib_suffix),
-                              "Half{}".format(lib_suffix)]
+        self.cpp_info.libs = tools.collect_libs(self)
 
         self.cpp_info.includedirs = [os.path.join("include", "OpenEXR"), "include"]
+
         if self.options.shared and self.settings.os == "Windows":
             self.cpp_info.defines.append("OPENEXR_DLL")
 

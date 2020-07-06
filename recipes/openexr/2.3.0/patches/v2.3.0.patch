@@ -1,0 +1,84 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b06d97ee..b6f692e3 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -52,11 +52,11 @@ endif()
+ 
+ if (WIN32 AND OPENEXR_BUILD_ILMBASE AND OPENEXR_BUILD_OPENEXR AND OPENEXR_BUILD_SHARED)
+     # necessary for building dwa lookup tables, and b44log tables on windows
+-    set(BUILD_ILMBASE_STATIC ON)
++    # set(BUILD_ILMBASE_STATIC ON)
+ elseif (OPENEXR_BUILD_ILMBASE AND OPENEXR_BUILD_STATIC)
+-    set(BUILD_ILMBASE_STATIC ON)
++    # set(BUILD_ILMBASE_STATIC ON)
+ else()
+-    set(BUILD_ILMBASE_STATIC OFF)
++    # set(BUILD_ILMBASE_STATIC OFF)
+ endif()
+ 
+ if (NOT OPENEXR_BUILD_SHARED)
+diff --git a/IlmBase/Half/CMakeLists.txt b/IlmBase/Half/CMakeLists.txt
+index 3d24cd78..7602dcdc 100644
+--- a/IlmBase/Half/CMakeLists.txt
++++ b/IlmBase/Half/CMakeLists.txt
+@@ -32,7 +32,7 @@ IF (OPENEXR_BUILD_SHARED)
+   LIST ( APPEND ILMBASE_LIB_TARGETS Half )
+ 
+   ADD_LIBRARY ( Half SHARED
+-    half.cpp
++    half.cpp "${CMAKE_CURRENT_BINARY_DIR}/eLut.h" "${CMAKE_CURRENT_BINARY_DIR}/toFloat.h"
+     )
+ 
+   TARGET_COMPILE_DEFINITIONS ( Half PRIVATE HALF_EXPORTS )
+@@ -54,7 +54,7 @@ IF (BUILD_ILMBASE_STATIC)
+   LIST ( APPEND ILMBASE_LIB_TARGETS Half_static )
+ 
+   ADD_LIBRARY ( Half_static STATIC
+-    half.cpp
++    half.cpp "${CMAKE_CURRENT_BINARY_DIR}/eLut.h" "${CMAKE_CURRENT_BINARY_DIR}/toFloat.h"
+     )
+ 
+   SET_TARGET_PROPERTIES ( Half_static
+diff --git a/OpenEXR/IlmImf/CMakeLists.txt b/OpenEXR/IlmImf/CMakeLists.txt
+index e1a87405..84442566 100644
+--- a/OpenEXR/IlmImf/CMakeLists.txt
++++ b/OpenEXR/IlmImf/CMakeLists.txt
+@@ -3,10 +3,10 @@
+ SET(CMAKE_INCLUDE_CURRENT_DIR 1)
+ 
+ IF (WIN32)
+-  SET(RUNTIME_DIR ${OPENEXR_PACKAGE_PREFIX}/bin)
++  # SET(RUNTIME_DIR ${OPENEXR_PACKAGE_PREFIX}/bin)
+   SET(WORKING_DIR ${RUNTIME_DIR})
+ ELSE ()
+-  SET(RUNTIME_DIR ${OPENEXR_PACKAGE_PREFIX}/lib)
++  # SET(RUNTIME_DIR ${OPENEXR_PACKAGE_PREFIX}/lib)
+   SET(WORKING_DIR .)
+ ENDIF ()
+ 
+@@ -22,9 +22,9 @@ IF (BUILD_B44EXPLOGTABLE)
+ 
+   IF (WIN32)
+     TARGET_LINK_LIBRARIES ( b44ExpLogTable
+-      IlmBase::Half_static
+-      IlmBase::IlmThread_static
+-      IlmBase::Iex_static)
++      IlmBase::Half${OPENEXR_TARGET_SUFFIX}
++      IlmBase::IlmThread${OPENEXR_TARGET_SUFFIX}
++      IlmBase::Iex${OPENEXR_TARGET_SUFFIX})
+   ELSE()
+     TARGET_LINK_LIBRARIES ( b44ExpLogTable
+       IlmBase::Half${OPENEXR_TARGET_SUFFIX}
+@@ -58,9 +58,9 @@ if (NOT EXISTS "${CMAKE_CURRENT_BINARY_DIR}/dwaLookups.h")
+ 
+   IF (WIN32)
+     TARGET_LINK_LIBRARIES ( dwaLookups
+-      IlmBase::Half_static
+-      IlmBase::IlmThread_static
+-      IlmBase::Iex_static)
++      IlmBase::Half${OPENEXR_TARGET_SUFFIX}
++      IlmBase::IlmThread${OPENEXR_TARGET_SUFFIX}
++      IlmBase::Iex${OPENEXR_TARGET_SUFFIX})
+   ELSE()
+     TARGET_LINK_LIBRARIES ( dwaLookups
+       IlmBase::Half${OPENEXR_TARGET_SUFFIX}

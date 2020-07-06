@@ -38,12 +38,11 @@ class OpenEXRConan(ConanFile):
     def source(self):
         tools.get(**self.conan_data["sources"][self.version])
         os.rename("openexr-{}".format(self.version), self._source_subfolder)
-        for p in self.conan_data["patches"][self.version]:
-            tools.patch(**p)
 
     def _configure_cmake(self):
         if self._cmake:
             return self._cmake
+
         self._cmake = CMake(self)
         self._cmake.definitions["OPENEXR_BUILD_PYTHON_LIBS"] = False
         self._cmake.definitions["BUILD_ILMBASE_STATIC"] = not self.options.shared
@@ -55,45 +54,26 @@ class OpenEXRConan(ConanFile):
         self._cmake.definitions["OPENEXR_BUILD_UTILS"] = False
         self._cmake.definitions["ENABLE_TESTS"] = False
         self._cmake.definitions["OPENEXR_BUILD_TESTS"] = False
+
         self._cmake.configure(build_folder=self._build_subfolder)
         return self._cmake
 
     def _patch_sources(self):
-        # Fix dependency of IlmBase
-        tools.replace_in_file(os.path.join(self._source_subfolder, "IlmBase", "Half", "CMakeLists.txt"),
-                              "ADD_LIBRARY ( Half_static STATIC\n    half.cpp",
-                              "ADD_LIBRARY ( Half_static STATIC\n    half.cpp \"${CMAKE_CURRENT_BINARY_DIR}/eLut.h\" \"${CMAKE_CURRENT_BINARY_DIR}/toFloat.h\"")
-        tools.replace_in_file(os.path.join(self._source_subfolder, "IlmBase", "Half", "CMakeLists.txt"),
-                              "ADD_LIBRARY ( Half SHARED\n    half.cpp",
-                              "ADD_LIBRARY ( Half SHARED\n    half.cpp \"${CMAKE_CURRENT_BINARY_DIR}/eLut.h\" \"${CMAKE_CURRENT_BINARY_DIR}/toFloat.h\"")
-        # Don't let the build script override static/shared of IlmBase
-        tools.replace_in_file(os.path.join(self._source_subfolder, "CMakeLists.txt"),
-                              "set(BUILD_ILMBASE_STATIC ON)",
-                              "set(BUILD_ILMBASE_STATIC {})".format(not self.options.shared))
-        if self.options.shared:
-            tools.replace_in_file(os.path.join(self._source_subfolder, "OpenEXR", "IlmImf", "CMakeLists.txt"),
-                                  "IlmBase::Half_static",
-                                  "IlmBase::Half${OPENEXR_TARGET_SUFFIX}")
-            tools.replace_in_file(os.path.join(self._source_subfolder, "OpenEXR", "IlmImf", "CMakeLists.txt"),
-                                  "IlmBase::IlmThread_static",
-                                  "IlmBase::IlmThread${OPENEXR_TARGET_SUFFIX}")
-            tools.replace_in_file(os.path.join(self._source_subfolder, "OpenEXR", "IlmImf", "CMakeLists.txt"),
-                                  "IlmBase::Iex_static",
-                                  "IlmBase::Iex${OPENEXR_TARGET_SUFFIX}")
-            # Do not override RUNTIME_DIR in IlmImf
-            tools.replace_in_file(os.path.join(self._source_subfolder, "OpenEXR", "IlmImf", "CMakeLists.txt"),
-                                  "SET(RUNTIME_DIR",
-                                  "# SET(RUNTIME_DIR")
+        for patch in self.conan_data.get("patches", {}).get(self.version, []):
+            tools.patch(**patch)
 
     def build(self):
         self._patch_sources()
+
         cmake = self._configure_cmake()
         cmake.build()
 
     def package(self):
-        self.copy("LICENSE", src=self._source_subfolder, dst="licenses", ignore_case=True, keep_path=False)
+        self.copy("LICENSE*", src=self._source_subfolder, dst="licenses", ignore_case=True, keep_path=False)
+
         cmake = self._configure_cmake()
         cmake.install()
+
         tools.rmdir(os.path.join(self.package_folder, "share"))
         tools.rmdir(os.path.join(self.package_folder, "lib", "pkgconfig"))
         tools.rmdir(os.path.join(self.package_folder, "lib", "cmake"))
@@ -106,22 +86,11 @@ class OpenEXRConan(ConanFile):
         self.cpp_info.names["cmake_find_package"] = "OpenEXR"
         self.cpp_info.names["cmake_find_package_multi"] = "OpenEXR"
         self.cpp_info.names["pkg_config"] = "OpenEXR"
-        parsed_version = self.version.split(".")
-        version_suffix = "-%s_%s" % (parsed_version[0], parsed_version[1]) if self.options.namespace_versioning else ""
-        if not self.options.shared:
-            version_suffix += "_s"
-        if self.settings.compiler == "Visual Studio" and self.settings.build_type == "Debug":
-            version_suffix += "_d"
 
-        self.cpp_info.libs = ["IlmImf{}".format(version_suffix),
-                              "IlmImfUtil{}".format(version_suffix),
-                              "IlmThread{}".format(version_suffix),
-                              "Iex{}".format(version_suffix),
-                              "IexMath{}".format(version_suffix),
-                              "Imath{}".format(version_suffix),
-                              "Half{}".format(version_suffix)]
+        self.cpp_info.libs = tools.collect_libs(self)
 
         self.cpp_info.includedirs = [os.path.join("include", "OpenEXR"), "include"]
+
         if self.options.shared and self.settings.os == "Windows":
             self.cpp_info.defines.append("OPENEXR_DLL")
 

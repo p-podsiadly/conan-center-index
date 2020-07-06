@@ -1,4 +1,7 @@
 sources:
+  "2.3.0":
+    url: "https://github.com/openexr/openexr/archive/v2.3.0.tar.gz"
+    sha256: "8243b7de12b52239fe9235a6aeb4e35ead2247833e4fbc41541774b222717933"
   "2.4.0":
     url: "https://github.com/openexr/openexr/archive/v2.4.0.tar.gz"
     sha256: "4904c5ea7914a58f60a5e2fbc397be67e7a25c380d7d07c1c31a3eefff1c92f1"
@@ -6,6 +9,11 @@ sources:
     url: "https://github.com/openexr/openexr/archive/v2.5.2.tar.gz"
     sha256: "5da8dff448d0c4a529e52c97daf238a461d01cd233944f75095668d6d7528761"
 patches:
+  "2.3.0":
+    - patch_file: "patches/IlmImf__ImfSystemSpecific.cpp.patch"
+      base_path: "source_subfolder/OpenEXR"
+    - patch_file: "patches/v2.3.0.patch"
+      base_path: "source_subfolder"
   "2.4.0":
     - patch_file: "patches/v2.4.0.patch"
       base_path: "source_subfolder"

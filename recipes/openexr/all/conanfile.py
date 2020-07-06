@@ -1,11 +1,9 @@
 from conans import ConanFile, CMake, tools
-import glob
 import os
 
 
 class OpenEXRConan(ConanFile):
     name = "openexr"
-    version = "2.3.0"
     description = "OpenEXR is a high dynamic-range (HDR) image file format developed by Industrial Light & " \
                   "Magic for use in computer imaging applications."
     topics = ("conan", "openexr", "hdr", "image", "picture")
@@ -15,8 +13,8 @@ class OpenEXRConan(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     options = {"shared": [True, False], "namespace_versioning": [True, False], "fPIC": [True, False]}
     default_options = {"shared": False, "namespace_versioning": True, "fPIC": True}
-    generators = "cmake"
-    exports_sources = ["CMakeLists.txt", "patches/*.patch"]
+    generators = "cmake", "cmake_find_package"
+    exports_sources = ["CMakeLists.txt", "patches/**"]
 
     _cmake = None
 
@@ -32,6 +30,10 @@ class OpenEXRConan(ConanFile):
         if self.settings.os == "Windows":
             del self.options.fPIC
 
+        version = tools.Version(self.version)
+        if version != "2.3.0":
+            del self.options.namespace_versioning
+
     def requirements(self):
         self.requires("zlib/1.2.11")
 
@@ -44,16 +46,25 @@ class OpenEXRConan(ConanFile):
             return self._cmake
 
         self._cmake = CMake(self)
-        self._cmake.definitions["OPENEXR_BUILD_PYTHON_LIBS"] = False
+
+        self._cmake.definitions["OPENEXR_BUILD_BOTH_STATIC_SHARED"] = False
         self._cmake.definitions["BUILD_ILMBASE_STATIC"] = not self.options.shared
         self._cmake.definitions["OPENEXR_BUILD_SHARED"] = self.options.shared
         self._cmake.definitions["OPENEXR_BUILD_STATIC"] = not self.options.shared
-        self._cmake.definitions["OPENEXR_NAMESPACE_VERSIONING"] = self.options.namespace_versioning
+
+        self._cmake.definitions["PYILMBASE_ENABLE"] = False
+        self._cmake.definitions["OPENEXR_VIEWERS_ENABLE"] = False
+        self._cmake.definitions["OPENEXR_BUILD_UTILS"] = False
+        self._cmake.definitions["BUILD_TESTING"] = False
+        self._cmake.definitions["OPENEXR_BUILD_PYTHON_LIBS"] = False
         self._cmake.definitions["OPENEXR_ENABLE_TESTS"] = False
         self._cmake.definitions["OPENEXR_FORCE_CXX03"] = False
         self._cmake.definitions["OPENEXR_BUILD_UTILS"] = False
         self._cmake.definitions["ENABLE_TESTS"] = False
         self._cmake.definitions["OPENEXR_BUILD_TESTS"] = False
+
+        if hasattr(self.options, "namespace_versioning"):
+            self._cmake.definitions["OPENEXR_NAMESPACE_VERSIONING"] = self.options.namespace_versioning
 
         self._cmake.configure(build_folder=self._build_subfolder)
         return self._cmake
@@ -69,7 +80,7 @@ class OpenEXRConan(ConanFile):
         cmake.build()
 
     def package(self):
-        self.copy("LICENSE*", src=self._source_subfolder, dst="licenses", ignore_case=True, keep_path=False)
+        self.copy("LICENSE*", src=self._source_subfolder, dst="licenses", keep_path=False)
 
         cmake = self._configure_cmake()
         cmake.install()
@@ -77,10 +88,6 @@ class OpenEXRConan(ConanFile):
         tools.rmdir(os.path.join(self.package_folder, "share"))
         tools.rmdir(os.path.join(self.package_folder, "lib", "pkgconfig"))
         tools.rmdir(os.path.join(self.package_folder, "lib", "cmake"))
-
-        with tools.chdir(os.path.join(self.package_folder, "lib")):
-            for filename in glob.glob("*.la"):
-                os.unlink(filename)
 
     def package_info(self):
         self.cpp_info.names["cmake_find_package"] = "OpenEXR"

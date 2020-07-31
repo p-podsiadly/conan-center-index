@@ -13,62 +13,93 @@ class SysConfigOpenGLConan(ConanFile):
     license = "MIT"
     settings = ("os",)
 
+    options = {"glvnd": [True, False]}
+    default_options = {"glvnd": True}
+
+    def config_options(self):
+        if self.settings.os != "Linux":
+            del self.options.glvnd
+
     def package_id(self):
         self.info.header_only()
 
-    def _fill_cppinfo_from_pkgconfig(self, name):
-        pkg_config = tools.PkgConfig(name)
-        if not pkg_config.provides:
-            raise ConanException("OpenGL development files aren't available, give up")
-        libs = [lib[2:] for lib in pkg_config.libs_only_l]
-        lib_dirs = [lib[2:] for lib in pkg_config.libs_only_L]
-        ldflags = [flag for flag in pkg_config.libs_only_other]
-        include_dirs = [include[2:] for include in pkg_config.cflags_only_I]
-        cflags = [flag for flag in pkg_config.cflags_only_other if not flag.startswith("-D")]
-        defines = [flag[2:] for flag in pkg_config.cflags_only_other if flag.startswith("-D")]
+    def _os_derived_from_debian_11_or_later(self):
+        distro = tools.os_info.linux_distro
+        version = tools.os_info.os_version
 
-        self.cpp_info.system_libs.extend(libs)
-        self.cpp_info.libdirs.extend(lib_dirs)
-        self.cpp_info.sharedlinkflags.extend(ldflags)
-        self.cpp_info.exelinkflags.extend(ldflags)
-        self.cpp_info.defines.extend(defines)
-        self.cpp_info.includedirs.extend(include_dirs)
-        self.cpp_info.cflags.extend(cflags)
-        self.cpp_info.cxxflags.extend(cflags)
+        return (distro == "debian" and version >= "11") or \
+               (distro == "ubuntu" and version >= "20") or \
+               (distro == "pop" and version >= "20")
 
     def system_requirements(self):
-        if tools.os_info.is_linux and self.settings.os == "Linux":
-            package_tool = tools.SystemPackageTool(conanfile=self, default_mode='verify')
-            if tools.os_info.with_yum:
-                if tools.os_info.linux_distro == "fedora" and tools.os_info.os_version >= "32":
-                    packages = ["libglvnd-devel"]
-                else:
-                    packages = ["mesa-libGL-devel"]
-            elif tools.os_info.with_apt:
-                ubuntu_20_or_later = tools.os_info.linux_distro == "ubuntu" and tools.os_info.os_version >= "20"
-                debian_11_or_later = tools.os_info.linux_distro == "debian" and tools.os_info.os_version >= "11"
-                pop_os_20_or_later = tools.os_info.linux_distro == "pop" and tools.os_info.os_version >= "20"
-                if ubuntu_20_or_later or debian_11_or_later or pop_os_20_or_later:
-                    packages = ["libgl-dev"]
-                else:
-                    packages = ["libgl1-mesa-dev"]
-            elif tools.os_info.with_pacman:
-                packages = ["libglvnd"]
-            elif tools.os_info.with_zypper:
-                packages = ["Mesa-libGL-devel"]
+        if not tools.os_info.is_linux or not self.settings.os == "Linux":
+            return
+
+        package_tool = tools.SystemPackageTool(conanfile=self, default_mode='verify')
+
+        if tools.os_info.with_yum:
+            if tools.os_info.linux_distro == "fedora" and tools.os_info.os_version >= "32":
+                packages = ["libglvnd-devel", "mesa-libGLU-devel"] # TODO add EGL and GLX
             else:
-                packages = []
-                self.output.warn("Don't know how to install OpenGL for your distro.")
-            for p in packages:
-                package_tool.install(update=True, packages=p)
+                packages = ["mesa-libGL-devel", "mesa-libGLU-devel"] # TODO add EGL and GLX
+        elif tools.os_info.with_apt:
+            if self._os_derived_from_debian_11_or_later():
+                packages = ["libgl-dev", "libglu1-mesa-dev", "libegl-dev", "libglx-dev"]
+            else:
+                packages = ["libgl1-mesa-dev", "libglu1-mesa-dev", "libegl1-mesa-dev"]
+        elif tools.os_info.with_pacman:
+            packages = ["libglvnd", "glu"] # TODO add EGL and GLX
+        elif tools.os_info.with_zypper:
+            packages = ["Mesa-libGL-devel", "Mesa-libGLU-devel"] # TODO add EGL and GLX
+        else:
+            packages = []
+            self.output.warn("Don't know how to install OpenGL for your distro.")
+
+        for p in packages:
+            package_tool.install(update=True, packages=p)
+
+    def _gl_defines(self):
+        if self.settings.os == "Macos":
+            return ["GL_SILENCE_DEPRECATION=1"]
+        
+        return []
+
+    def _gl_libraries(self):
+        if self.settings.os == "Macos":
+            return ["OpenGL"]
+        elif self.settings.os == "Windows":
+            return ["opengl32"]
+        elif self.settings.os == "Linux":
+            if self.options.glvnd:
+                return ["OpenGL"]
+            else:
+                return ["GL"]
+
+    def _glu_defines(self):
+        return self._gl_defines()
+    
+    def _glu_libraries(self):
+        if self.settings.os == "Macos":
+            return ["OpenGL"]
+        elif self.settings.os == "Windows":
+            return ["glu32"]
+        elif self.settings.os == "Linux":
+            return ["GLU"]
 
     def package_info(self):
-        self.cpp_info.includedirs = []
-        self.cpp_info.libdirs = []
-        if self.settings.os == "Macos":
-            self.cpp_info.defines.append("GL_SILENCE_DEPRECATION=1")
-            self.cpp_info.frameworks.append("OpenGL")
-        elif self.settings.os == "Windows":
-            self.cpp_info.system_libs = ["OpenGL32"]
-        elif self.settings.os == "Linux":
-            self._fill_cppinfo_from_pkgconfig('gl')
+        self.cpp_info.names["cmake_find_package"] = "OpenGL"
+        self.cpp_info.names["cmake_find_package_multi"] = "OpenGL"
+
+        self.cpp_info.components["GL"].defines = self._gl_defines()
+        self.cpp_info.components["GL"].libs = self._gl_libraries()
+
+        self.cpp_info.components["GLU"].defines = self._glu_defines()
+        self.cpp_info.components["GLU"].libs = self._glu_libraries()
+
+        if self.settings.os == "Linux":
+            if self.options.glvnd:
+                self.cpp_info.components["OpenGL"].libs = ["OpenGL"]
+
+            self.cpp_info.components["EGL"].libs = "EGL"
+            self.ccp_info.components["GLX"].libs = "GLX"
+
